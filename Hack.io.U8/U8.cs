@@ -174,7 +174,7 @@ public class U8 : Archive
         }
 
         //Write the Header
-        Strm.Write(MAGIC);
+        Strm.WriteMagic(MAGIC);
         Strm.WriteInt32(0x20);
         Strm.WriteInt32(Nodes.Count * 0x0C + StringBytes.Count);
         Strm.WriteUInt32(DataOffset);

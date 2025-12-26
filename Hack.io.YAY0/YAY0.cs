@@ -122,11 +122,11 @@ public static class YAY0
 
     private static byte[] Encode(byte[] file, BackgroundWorker? BGW)
     {
-        List<byte> layoutBits = new();
-        List<byte> dictionary = new();
+        List<byte> layoutBits = [];
+        List<byte> dictionary = [];
 
-        List<byte> uncompressedData = new();
-        List<int[]> compressedData = new();
+        List<byte> uncompressedData = [];
+        List<int[]> compressedData = [];
 
         int maxDictionarySize = 4096;
         int maxMatchLength = 255 + 0x12;
@@ -198,13 +198,13 @@ public static class YAY0
 
     private static int[] FindAllMatches(ref List<byte> dictionary, byte match)
     {
-        List<int> matchPositons = new();
+        List<int> matchPositons = [];
 
         for (int i = 0; i < dictionary.Count; i++)
             if (dictionary[i] == match)
                 matchPositons.Add(i);
 
-        return matchPositons.ToArray();
+        return [.. matchPositons];
     }
 
     private static int[] FindLargestMatch(ref List<byte> dictionary, int[] matchesFound, ref byte[] file, int fileIndex, int maxMatch)
@@ -227,11 +227,7 @@ public static class YAY0
             matchSizes[i] = matchSize;
         }
 
-        int[] bestMatch = new int[2];
-
-        bestMatch[0] = matchesFound[0];
-        bestMatch[1] = matchSizes[0];
-
+        int[] bestMatch = [matchesFound[0], matchSizes[0]];
         for (int i = 1; i < matchesFound.Length; i++)
         {
             if (matchSizes[i] > bestMatch[1])
@@ -246,10 +242,10 @@ public static class YAY0
 
     public static byte[] BuildYAY0CompressedBlock(ref List<byte> layoutBits, ref List<byte> uncompressedData, ref List<int[]> offsetLengthPairs, int decompressedSize, int offset)
     {
-        List<byte> finalYAY0Block = new();
-        List<byte> layoutBytes = new();
-        List<byte> compressedDataBytes = new();
-        List<byte> extendedLengthBytes = new();
+        List<byte> finalYAY0Block = [];
+        List<byte> layoutBytes = [];
+        List<byte> compressedDataBytes = [];
+        List<byte> extendedLengthBytes = [];
 
         int compressedOffset = 16 + offset; //header size
         int uncompressedOffset;
@@ -270,8 +266,7 @@ public static class YAY0
             string layoutBitsString = layoutBits[0].ToString() + layoutBits[1].ToString() + layoutBits[2].ToString() + layoutBits[3].ToString()
                     + layoutBits[4].ToString() + layoutBits[5].ToString() + layoutBits[6].ToString() + layoutBits[7].ToString();
 
-            byte[] layoutByteArray = new byte[1];
-            layoutByteArray[0] = Convert.ToByte(layoutBitsString, 2);
+            byte[] layoutByteArray = [Convert.ToByte(layoutBitsString, 2)];
             layoutBytes.Add(layoutByteArray[0]);
             layoutBits.RemoveRange(0, (layoutBits.Count < 8) ? layoutBits.Count : 8);
 
@@ -288,10 +283,7 @@ public static class YAY0
 
             int compressedInt = (adjustedLength << 12) | adjustedOffset - 1;
 
-            byte[] compressed2Byte = new byte[2];
-            compressed2Byte[0] = (byte)(compressedInt & 0xFF);
-            compressed2Byte[1] = (byte)((compressedInt >> 8) & 0xFF);
-
+            byte[] compressed2Byte = [(byte)(compressedInt & 0xFF), (byte)((compressedInt >> 8) & 0xFF)];
             compressedDataBytes.Add(compressed2Byte[1]);
             compressedDataBytes.Add(compressed2Byte[0]);
 
@@ -365,6 +357,6 @@ public static class YAY0
             }
         }
 
-        return finalYAY0Block.ToArray();
+        return [.. finalYAY0Block];
     }
 }

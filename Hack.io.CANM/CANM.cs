@@ -57,15 +57,18 @@ public class CANM : ILoadSaveFile
     public void Load(Stream Strm)
     {
         long Start = Strm.Position;
+        // For some reason, this is always Big Endian...
+        StreamUtil.PushEndianBig();
         FileUtil.ExceptionOnBadMagic(Strm, MAGIC);
 
-        string FrameTypeInFile = Strm.ReadString(4, Encoding.ASCII);
+        string FrameTypeInFile = Strm.ReadMagic(4);
         IsFullFrames = FrameTypeInFile.Equals(FRAMETYPE_CANM);
 
         Unknown1 = Strm.ReadInt32();
         Unknown2 = Strm.ReadInt32();
         Unknown3 = Strm.ReadInt32();
         Unknown4 = Strm.ReadInt32();
+        StreamUtil.PopEndian();
         Length = Strm.ReadInt32();
 
         int DataOffset = Strm.ReadInt32();
@@ -77,12 +80,14 @@ public class CANM : ILoadSaveFile
     public void Save(Stream Strm)
     {
         //long Start = Strm.Position;
-        Strm.WriteString(MAGIC, Encoding.ASCII, null);
-        Strm.WriteString(IsFullFrames ? FRAMETYPE_CANM : FRAMETYPE_CKAN, Encoding.ASCII, null);
+        StreamUtil.PushEndianBig();
+        Strm.WriteMagic(MAGIC);
+        Strm.WriteMagic(IsFullFrames ? FRAMETYPE_CANM : FRAMETYPE_CKAN);
         Strm.WriteInt32(Unknown1);
         Strm.WriteInt32(Unknown2);
         Strm.WriteInt32(Unknown3);
         Strm.WriteInt32(Unknown4);
+        StreamUtil.PopEndian();
         Strm.WriteInt32(Length);
         Strm.WriteInt32(IsFullFrames ? 0x40 : 0x60);
 
@@ -92,7 +97,9 @@ public class CANM : ILoadSaveFile
 
         Strm.WriteInt32((FrameData.Count+2) * sizeof(float));
         Strm.WriteMultiSingle(FrameData);
-        Strm.Write(new byte[] { 0x3D, 0xCC, 0xCC, 0xCD, 0x4E, 0x6E, 0x6B, 0x28, 0xFF, 0xFF, 0xFF, 0xFF }, 0, 12);
+        Strm.WriteUInt32(0x3DCCCCCD);
+        Strm.WriteUInt32(0x4E6E6B28);
+        Strm.WriteUInt32(0xFFFFFFFF);
     }
 
     //================================================================

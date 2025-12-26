@@ -13,7 +13,7 @@ namespace Hack.io.BTK;
 public class BTK : J3DAnimationBase<Animation>, ILoadSaveFile
 {
     /// <inheritdoc cref="Interface.DocGen.DOC_MAGIC"/>
-    public const string MAGIC = "J3D1btk1";
+    public const string MAGIC = "btk1";
     /// <inheritdoc cref="J3D.DocGen.COMMON_CHUNKMAGIC"/>
     public const string CHUNKMAGIC = "TTK1";
 
@@ -30,10 +30,11 @@ public class BTK : J3DAnimationBase<Animation>, ILoadSaveFile
     /// <inheritdoc/>
     public void Load(Stream Strm)
     {
+        FileUtil.ExceptionOnBadMagic(Strm, J3D.Utility.MAGIC_J3D1);
         FileUtil.ExceptionOnBadMagic(Strm, MAGIC);
         uint FileSize = Strm.ReadUInt32(),
             ChunkCount = Strm.ReadUInt32();
-        Strm.ReadJ3DSubVersion();
+        Strm.ReadJ3DSubVersion(out _);
 
         //Only 1 chunk is supported
         uint ChunkStart = (uint)Strm.Position;
@@ -107,13 +108,14 @@ public class BTK : J3DAnimationBase<Animation>, ILoadSaveFile
         float rotationScale = (float)(Math.Pow(2, RotationMultiplier) / 0x7FFF);
 
         long Start = Strm.Position;
-        Strm.WriteString(MAGIC, Encoding.ASCII, null);
+        Strm.WriteMagic(J3D.Utility.MAGIC_J3D1);
+        Strm.WriteMagic(MAGIC);
         Strm.WritePlaceholder(4); //FileSize
-        Strm.Write(new byte[4] { 0x00, 0x00, 0x00, 0x01 }, 0, 4); //Chunk Count
+        Strm.WriteInt32(1);
         Strm.WriteJ3DSubVersion();
 
         long ChunkStart = Strm.Position;
-        Strm.WriteString(CHUNKMAGIC, Encoding.ASCII, null);
+        Strm.WriteMagic(CHUNKMAGIC);
         Strm.WritePlaceholder(4); //ChunkSize
         Strm.WriteByte((byte)Loop);
         Strm.WriteByte((byte)RotationMultiplier);
@@ -125,13 +127,13 @@ public class BTK : J3DAnimationBase<Animation>, ILoadSaveFile
         Strm.Position = ChunkStart + 0x5C;
         Strm.WriteInt32(UseMaya ? 1 : 0);
 
-        List<string> Names = new();
-        List<ushort> RemapIndexTable = new();
-        List<byte> GeneratorTable = new();
-        List<float[]> CenterTable = new();
-        List<float> ScaleTable = new();
-        List<short> RotationTable = new();
-        List<float> TranslationTable = new();
+        List<string> Names = [];
+        List<ushort> RemapIndexTable = [];
+        List<byte> GeneratorTable = [];
+        List<float[]> CenterTable = [];
+        List<float> ScaleTable = [];
+        List<short> RotationTable = [];
+        List<float> TranslationTable = [];
 
         long AnimationTableOffset = Strm.Position;
         for (int i = 0; i < Count; i++)
@@ -251,15 +253,15 @@ public class BTK : J3DAnimationBase<Animation>, ILoadSaveFile
         /// </summary>
         public float CenterW { get => mCenter[2]; set => mCenter[2] = value; }
 
-        public J3DAnimationTrack ScaleU { get; set; } = new();
-        public J3DAnimationTrack ScaleV { get; set; } = new();
-        public J3DAnimationTrack ScaleW { get; set; } = new();
-        public J3DAnimationTrack RotationU { get; set; } = new();
-        public J3DAnimationTrack RotationV { get; set; } = new();
-        public J3DAnimationTrack RotationW { get; set; } = new();
-        public J3DAnimationTrack TranslationU { get; set; } = new();
-        public J3DAnimationTrack TranslationV { get; set; } = new();
-        public J3DAnimationTrack TranslationW { get; set; } = new();
+        public J3DAnimationTrack ScaleU { get; set; } = [];
+        public J3DAnimationTrack ScaleV { get; set; } = [];
+        public J3DAnimationTrack ScaleW { get; set; } = [];
+        public J3DAnimationTrack RotationU { get; set; } = [];
+        public J3DAnimationTrack RotationV { get; set; } = [];
+        public J3DAnimationTrack RotationW { get; set; } = [];
+        public J3DAnimationTrack TranslationU { get; set; } = [];
+        public J3DAnimationTrack TranslationV { get; set; } = [];
+        public J3DAnimationTrack TranslationW { get; set; } = [];
 
         private float[] mCenter = new float[3];
 

@@ -1,5 +1,4 @@
-﻿using System.Text;
-using Hack.io.Interface;
+﻿using Hack.io.Interface;
 using Hack.io.Utility;
 using Hack.io.J3D;
 using static Hack.io.BCK.BCK;
@@ -9,7 +8,7 @@ namespace Hack.io.BCK;
 public class BCK : J3DAnimationBase<Animation>, ILoadSaveFile
 {
     /// <inheritdoc cref="Interface.DocGen.DOC_MAGIC"/>
-    public const string MAGIC = "J3D1bck1";
+    public const string MAGIC = "bck1";
     /// <inheritdoc cref="J3D.DocGen.COMMON_CHUNKMAGIC"/>
     public const string CHUNKMAGIC = "ANK1";
 
@@ -28,6 +27,7 @@ public class BCK : J3DAnimationBase<Animation>, ILoadSaveFile
     public void Load(Stream Strm)
     {
         uint StartPosition = (uint)Strm.Position;
+        FileUtil.ExceptionOnBadMagic(Strm, J3D.Utility.MAGIC_J3D1);
         FileUtil.ExceptionOnBadMagic(Strm, MAGIC);
         uint FileSize = Strm.ReadUInt32(),
             ChunkCount = Strm.ReadUInt32();
@@ -90,7 +90,7 @@ public class BCK : J3DAnimationBase<Animation>, ILoadSaveFile
             return;
 
         Strm.Position = SoundOffset;
-        EmbeddedSounds = new();
+        EmbeddedSounds = [];
         EmbeddedSounds.Load(Strm);
 
         Strm.Position = ChunkStart + ChunkSize;
@@ -102,13 +102,14 @@ public class BCK : J3DAnimationBase<Animation>, ILoadSaveFile
         float rotationScale = (float)(POW) * (180.0f / 32768.0f);
 
         long Start = Strm.Position;
-        Strm.WriteString(MAGIC, Encoding.ASCII, null);
+        Strm.WriteMagic(J3D.Utility.MAGIC_J3D1);
+        Strm.WriteMagic(MAGIC);
         Strm.WritePlaceholder(4); //FileSize
-        Strm.Write(new byte[4] { 0x00, 0x00, 0x00, 0x01 }, 0, 4); //Chunk Count
+        Strm.WriteInt32(1); //Chunk Count
         Strm.Write(CollectionUtil.InitilizeArray((byte)0xFF, 0x10));
 
         long ChunkStart = Strm.Position;
-        Strm.WriteString(CHUNKMAGIC, Encoding.ASCII, null);
+        Strm.WriteMagic(CHUNKMAGIC);
         Strm.WritePlaceholder(4); //ChunkSize
         Strm.WriteByte((byte)Loop);
         Strm.WriteByte((byte)RotationMultiplier);
@@ -118,9 +119,9 @@ public class BCK : J3DAnimationBase<Animation>, ILoadSaveFile
         Strm.WritePlaceholderMulti(4, 4); //Offset Placeholders
         Strm.PadTo(32, J3D.Utility.PADSTRING);
 
-        List<float> ScaleTable = new();
-        List<short> RotationTable = new();
-        List<float> TranslationTable = new();
+        List<float> ScaleTable = [];
+        List<short> RotationTable = [];
+        List<float> TranslationTable = [];
 
         long AnimationTableOffset = Strm.Position;
         for (int i = 0; i < Count; i++)
@@ -194,15 +195,15 @@ public class BCK : J3DAnimationBase<Animation>, ILoadSaveFile
     /// <inheritdoc cref="J3D.DocGen.COMMON_ANIMATIONCLASS"/>
     public class Animation : IJ3DAnimationContainer
     {
-        public J3DAnimationTrack ScaleX { get; set; } = new();
-        public J3DAnimationTrack ScaleY { get; set; } = new();
-        public J3DAnimationTrack ScaleZ { get; set; } = new();
-        public J3DAnimationTrack RotationX { get; set; } = new();
-        public J3DAnimationTrack RotationY { get; set; } = new();
-        public J3DAnimationTrack RotationZ { get; set; } = new();
-        public J3DAnimationTrack TranslationX { get; set; } = new();
-        public J3DAnimationTrack TranslationY { get; set; } = new();
-        public J3DAnimationTrack TranslationZ { get; set; } = new();
+        public J3DAnimationTrack ScaleX { get; set; } = [];
+        public J3DAnimationTrack ScaleY { get; set; } = [];
+        public J3DAnimationTrack ScaleZ { get; set; } = [];
+        public J3DAnimationTrack RotationX { get; set; } = [];
+        public J3DAnimationTrack RotationY { get; set; } = [];
+        public J3DAnimationTrack RotationZ { get; set; } = [];
+        public J3DAnimationTrack TranslationX { get; set; } = [];
+        public J3DAnimationTrack TranslationY { get; set; } = [];
+        public J3DAnimationTrack TranslationZ { get; set; } = [];
 
         public override string ToString() => $"Joint";
 

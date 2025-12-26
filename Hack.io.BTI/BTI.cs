@@ -123,6 +123,35 @@ public class BTI : GXTexture, ILoadSaveFile
             mEnableMipmaps == bTI.mEnableMipmaps;
 
     public override int GetHashCode() => HashCode.Combine(base.GetHashCode(), mAlphaSetting, mClampLODBias, mMaxAnisotropy, mEnableMipmaps);
+
+    public override void CopyTo(GXTexture target)
+    {
+        base.CopyTo(target);
+        if (target is not BTI t)
+            return;
+
+        t.mAlphaSetting = mAlphaSetting;
+        t.mClampLODBias = mClampLODBias;
+        t.mMaxAnisotropy = mMaxAnisotropy;
+        t.mEnableMipmaps = mEnableMipmaps;
+    }
+
+    public static BTI Create<EncT>(GXTextureEncoder<EncT> Encoder, EncT Data,
+        GXTextureFormat TextureFormat, GXPaletteFormat? PaletteFormat,
+        int Width, int Height, int Levels, int? PaletteCount,
+        GXWrapMode WrapS, GXWrapMode WrapT, GXFilterMode MagnificationFilter, GXFilterMode MinificationFilter,
+        float MinLOD, float MaxLOD, float LODBias, bool EnableEdgeLOD,
+        JUTTransparency Transparency, bool ClampLODBias, byte MaxAnisotropy, bool EnableMipmaps)
+    {
+        BTI NewTex = new();
+        EncodeTextureData(NewTex, Encoder, Data, TextureFormat, PaletteFormat, Width, Height, Levels, PaletteCount);
+        SetFilterAndLoD(NewTex, WrapS, WrapT, MagnificationFilter, MinificationFilter, MinLOD, MaxLOD, LODBias, EnableEdgeLOD);
+        NewTex.mAlphaSetting = Transparency;
+        NewTex.mClampLODBias = ClampLODBias;
+        NewTex.mMaxAnisotropy = MaxAnisotropy;
+        NewTex.mEnableMipmaps = EnableMipmaps;
+        return NewTex;
+    }
 }
 
 public enum JUTTransparency

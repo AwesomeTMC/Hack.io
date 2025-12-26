@@ -7,17 +7,37 @@ public static partial class Utility
 {
     //Yes I know this is too long to ever get fully written but I don't care. This is useful in case something goes wrong with a file's save
     public const string PADSTRING = "Hack.io was the last code to touch this file";
+    public const string MAGIC_J3D1 = "J3D1"; // Animation Formats
+    public const string MAGIC_J3D2 = "J3D2"; // Model/Material Formats
+    public const string SUBVERSION_1 = "SVR1"; // Animation Formats
+    public const string SUBVERSION_2 = "SVR2"; // No idea if this is seen anywhere
+    public const string SUBVERSION_3 = "SVR3"; // Model Formats
 
-    public const string SUBVERSION = "SVR1";
-    public static bool ReadJ3DSubVersion(this Stream Strm)
+    public static bool ReadJ3DSubVersion(this Stream Strm, out int Version)
     {
-        _ = Strm.IsMagicMatch(SUBVERSION);
-        Strm.Position += 0x0C;
-        return true;
+        Version = -1;
+        if (CheckMagic(SUBVERSION_1))
+            Version = 1;
+        else if (CheckMagic(SUBVERSION_2))
+            Version = 2;
+        else if (CheckMagic(SUBVERSION_3))
+            Version = 3;
+
+        Strm.Position += 0x10; // Skip over the data before returning
+        return Version != -1;
+
+        bool CheckMagic(string str)
+        {
+            bool v = Strm.ReadString(Encoding.ASCII, str.Length).Equals(str);
+            Strm.Position -= str.Length;
+            return v;
+        }
     }
-    public static void WriteJ3DSubVersion(this Stream Strm)
+    public static void WriteJ3DSubVersion(this Stream Strm, int Ver = 1)
     {
-        Strm.WriteString(SUBVERSION, Encoding.ASCII, null);
+        Ver -= 1; // Adjust for indexing
+        string[] verlist = [SUBVERSION_1, SUBVERSION_2, SUBVERSION_3];
+        Strm.WriteString(verlist[Ver], Encoding.ASCII, null);
         Strm.Write(CollectionUtil.InitilizeArray<byte>(0xFF, 0x0C));
     }
 
@@ -43,7 +63,6 @@ public static partial class Utility
 
         return AllStrings;
     }
-
     public static void WriteJ3DStringTable(this Stream Strm, IList<string> Values)
     {
         long start = Strm.Position;
@@ -69,13 +88,40 @@ public static partial class Utility
             curOffset = Strm.Position;
         }
     }
-
     public static uint CalculateJ3DStringTableSize(IList<string> Values)
     {
         int Size = 4 + (4 * Values.Count);
         for (int i = 0; i < Values.Count; i++)
             Size += StreamUtil.ShiftJIS.GetBytes(Values[i]).Length + 1; // Plus one for null terminator
         return (uint)Size;
+    }
+
+    /// <summary>
+    /// Checks <paramref name="ChunkCount"/> amount of chunks to see if we can find the requested one
+    /// </summary>
+    /// <param name="Strm"></param>
+    /// <param name="ChunkCount"></param>
+    /// <param name="StartOffset"></param>
+    /// <returns></returns>
+    public static bool TryGetOffsetOfChunk(this Stream Strm, string Magic, uint ChunkCount, long StartOffset, out long Address)
+    {
+        Address = -1;
+        Strm.Position = StartOffset;
+        for (int i = 0; i < ChunkCount; i++)
+        {
+            long ChunkStart = Strm.Position;
+            string ChunkMagic = Strm.ReadMagic(4);
+            uint ChunkSize = Strm.ReadUInt32();
+
+            if (ChunkMagic.Equals(Magic))
+            {
+                Address = ChunkStart;
+                return true;
+            }
+
+            Strm.Position = ChunkStart + ChunkSize;
+        }
+        return false;
     }
 
     private static ushort HashString(string str)
@@ -311,12 +357,10 @@ public static partial class Utility
             return; //Do not reverse tracks like this because they are static
         for (int i = 0; i < Track.Count; i++)
         {
-            Track[i].Time = (ushort)(TotalDuration - Track[i].Time);
             float ing = Track[i].IngoingTangent;
             float outg = Track[i].OutgoingTangent;
             CollectionUtil.SwapValues(ref ing, ref outg);
-            Track[i].IngoingTangent = ing;
-            Track[i].OutgoingTangent = outg;
+            Track[i] = new((ushort)(TotalDuration - Track[i].Time), Track[i].Value, ing, outg);
         }
         Track.Reverse();
 
@@ -387,9 +431,9 @@ public static partial class Utility
         return GetPointCubic(Vector, Time);
     }
 
-    private static float GetPointCubic(IList<float> cf, float t)
+    private static float GetPointCubic(ReadOnlySpan<float> cf, float t)
     {
-        if (cf.Count != 4)
+        if (cf.Length != 4)
             throw new ArgumentOutOfRangeException(nameof(cf));
         return (((cf[0] * t + cf[1]) * t + cf[2]) * t + cf[3]);
     } 

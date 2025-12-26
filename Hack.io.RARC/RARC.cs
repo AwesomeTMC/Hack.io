@@ -1,5 +1,6 @@
 ﻿using Hack.io.Class;
 using Hack.io.Utility;
+using System.Runtime.CompilerServices;
 using System.Text;
 
 namespace Hack.io.RARC;
@@ -73,10 +74,8 @@ public class RARC : Archive
         uint FileSize = Strm.ReadUInt32(),
             DataHeaderOffset = Strm.ReadUInt32(),
             DataOffset = Strm.ReadUInt32() + 0x20,
-            DataLength = Strm.ReadUInt32(),
-            MRAMSize = Strm.ReadUInt32(),
-            ARAMSize = Strm.ReadUInt32();
-        Strm.Position += 0x04; //Skip the supposed padding
+            DataLength = Strm.ReadUInt32();
+        Strm.Position += 0x0C; //Skip the MRAM Size, ARAM Size, and DVD Size
         #endregion
 
         #region Data Header
@@ -93,34 +92,39 @@ public class RARC : Archive
         #region Directory Nodes
         Strm.Position = DirectoryTableOffset;
 
-        List<RARCDirEntry> FlatDirectoryList = new();
+        List<RARCDirEntry> FlatDirectoryList = [];
 
         for (int i = 0; i < DirectoryCount; i++)
             FlatDirectoryList.Add(new(Strm, StringTableOffset));
         #endregion
 
         #region File Nodes
-        List<RARCFileEntry> FlatFileList = new();
+        List<RARCFileEntry> FlatFileList = [];
         Strm.Seek(FileEntryTableOffset, SeekOrigin.Begin);
         for (int i = 0; i < FileEntryCount; i++)
         {
-            FlatFileList.Add(new RARCFileEntry()
+            RARCFileEntry entry = new()
             {
                 FileID = Strm.ReadInt16(),
-                NameHash = Strm.ReadInt16(),
-                Type = Strm.ReadInt16()
-            });
-            ushort CurrentNameOffset = Strm.ReadUInt16();
-            FlatFileList[^1].ModularA = Strm.ReadInt32();
-            FlatFileList[^1].ModularB = Strm.ReadInt32();
+                NameHash = Strm.ReadInt16()
+            };
+            // there is reason to believe that this is a uint8 int24 situation
+            uint tmp = Strm.ReadUInt32();
+            entry.Type = (byte)((tmp >> 24) & 0xFF);
+
+            uint CurrentNameOffset = tmp & 0x00FFFFFF;
+            entry.ModularA = Strm.ReadInt32();
+            entry.ModularB = Strm.ReadInt32();
             Strm.Position += 0x04;
             long Pauseposition = Strm.Position;
             Strm.Seek(StringTableOffset + CurrentNameOffset, SeekOrigin.Begin);
-            FlatFileList[^1].Name = Strm.ReadString(StreamUtil.ShiftJIS);
+            entry.Name = Strm.ReadString(StreamUtil.ShiftJIS);
             Strm.Position = Pauseposition;
+
+            FlatFileList.Add(entry);
         }
 
-        List<Directory> Directories = new();
+        List<Directory> Directories = [];
         for (int i = 0; i < FlatDirectoryList.Count; i++)
         {
             Directories.Add(new Directory(this, i, FlatDirectoryList, FlatFileList, DataOffset, Strm));
@@ -128,7 +132,7 @@ public class RARC : Archive
 
         for (int i = 0; i < Directories.Count; i++)
         {
-            List<KeyValuePair<string, object>> templist = new();
+            List<KeyValuePair<string, object>> templist = [];
             foreach (KeyValuePair<string, object> DirectoryItem in Directories[i].Items)
             {
                 if (DirectoryItem.Value is RARCFileEntry fe)
@@ -166,42 +170,47 @@ public class RARC : Archive
         if (Root is null)
             throw new NullReferenceException(NULL_ROOT_EXCEPTION);
 
-        Dictionary<ArchiveFile, uint> FileOffsets = new();
+        bool KeepFileIdSync = KeepFileIDsSynced;
+        Dictionary<ArchiveFile, uint> FileOffsets = [];
         uint dataoffset = 0;
         uint MRAMSize = 0, ARAMSize = 0, DVDSize = 0;
-        byte[] DataByteBuffer = GetDataBytes(Root, ref FileOffsets, ref dataoffset, ref MRAMSize, ref ARAMSize, ref DVDSize).ToArray();
+        byte[] DataByteBuffer = [.. GetDataBytes(Root, ref FileOffsets, ref dataoffset, ref MRAMSize, ref ARAMSize, ref DVDSize)];
         short FileID = 0;
         int NextFolderID = 1;
-        List<RARCFileEntry> FlatFileList = GetFlatFileList(Root, FileOffsets, ref FileID, 0, ref NextFolderID, -1);
+        List<RARCFileEntry> FlatFileList = GetFlatFileList(Root, FileOffsets, ref FileID, 0, ref NextFolderID, -1, KeepFileIdSync);
         uint FirstFileOffset = 0;
         List<RARCDirEntry> FlatDirectoryList = GetFlatDirectoryList(Root, ref FirstFileOffset);
         FlatDirectoryList.Insert(0, new RARCDirEntry() { FileCount = (ushort)(Root.Items.Count + 2), FirstFileOffset = 0, Name = Root.Name, NameHash = StringToHash(Root.Name), NameOffset = 0, Type = "ROOT" });
-        Dictionary<string, uint> StringLocations = new();
-        byte[] StringDataBuffer = GetStringTableBytes(FlatFileList, Root.Name, ref StringLocations).ToArray();
+        Dictionary<string, uint> StringLocations = [];
+        byte[] StringDataBuffer = [.. GetStringTableBytes(FlatFileList, Root.Name, ref StringLocations)];
 
         #region File Writing
         long StartPosition = Strm.Position;
-        Strm.WriteString(MAGIC, Encoding.ASCII, null);
-        Strm.Write(new byte[16] { 0xDD, 0xDD, 0xDD, 0xDD, 0x00, 0x00, 0x00, 0x20, 0xDD, 0xDD, 0xDD, 0xDD, 0xEE, 0xEE, 0xEE, 0xEE }, 0, 16);
+        Strm.WriteMagic(MAGIC);
+        Strm.WritePlaceholder(4); // File Size
+        Strm.WriteUInt32(0x20); // Data Header Offset (always 0x20)
+        Strm.WritePlaceholder(4); // Offset To File Data Section (-0x20)
+        Strm.WritePlaceholder(4); // Length of the File Data Section
         Strm.WriteUInt32(MRAMSize);
         Strm.WriteUInt32(ARAMSize);
         Strm.WriteUInt32(DVDSize);
+
         //Data Header
         Strm.WriteInt32(FlatDirectoryList.Count);
-        Strm.Write(new byte[4] { 0xDD, 0xDD, 0xDD, 0xDD }, 0, 4); //Directory Nodes Location (-0x20)
+        Strm.WritePlaceholder(4); //Directory Nodes Location (-0x20)
         Strm.WriteInt32(FlatFileList.Count);
-        Strm.Write(new byte[4] { 0xDD, 0xDD, 0xDD, 0xDD }, 0, 4); //File Entries Location (-0x20)
-        Strm.Write(new byte[4] { 0xEE, 0xEE, 0xEE, 0xEE }, 0, 4); //String Table Size
-        Strm.Write(new byte[4] { 0xEE, 0xEE, 0xEE, 0xEE }, 0, 4); //string Table Location (-0x20)
+        Strm.WritePlaceholder(4); //File Entries Location (-0x20)
+        Strm.WritePlaceholder(4); //String Table Size
+        Strm.WritePlaceholder(4); //string Table Location (-0x20)
         Strm.WriteUInt16((ushort)FlatFileList.Count);
-        Strm.WriteByte((byte)(KeepFileIDsSynced ? 0x01 : 0x00));
+        Strm.WriteByte((byte)(KeepFileIdSync ? 0x01 : 0x00));
         Strm.Write(new byte[5], 0, 5);
         long DirectoryEntryOffset = Strm.Position;
 
         #region Directory Nodes
         for (int i = 0; i < FlatDirectoryList.Count; i++)
         {
-            Strm.WriteString(FlatDirectoryList[i].Type, StreamUtil.ShiftJIS, null);
+            Strm.WriteMagic(FlatDirectoryList[i].Type);
             Strm.WriteUInt32(StringLocations[FlatDirectoryList[i].Name]);
             Strm.WriteUInt16(FlatDirectoryList[i].NameHash);
             Strm.WriteUInt16(FlatDirectoryList[i].FileCount);
@@ -217,8 +226,9 @@ public class RARC : Archive
         {
             Strm.WriteInt16(FlatFileList[i].FileID);
             Strm.WriteUInt16(StringToHash(FlatFileList[i].Name));
-            Strm.WriteInt16(FlatFileList[i].Type);
-            Strm.WriteUInt16((ushort)StringLocations[FlatFileList[i].Name]);
+            uint tmp = (uint)(FlatFileList[i].Type << 24);
+            tmp |= StringLocations[FlatFileList[i].Name] & 0x00FFFFFF;
+            Strm.WriteUInt32(tmp);
             Strm.WriteInt32(FlatFileList[i].ModularA);
             Strm.WriteInt32(FlatFileList[i].ModularB);
             Strm.Write(new byte[4], 0, 4);
@@ -270,7 +280,7 @@ public class RARC : Archive
         if (Root is null)
             throw new NullReferenceException(NULL_ROOT_EXCEPTION);
 
-        List<short> AllIDs = new();
+        List<short> AllIDs = [];
         List<ArchiveFile?> FlatFileList = GetFlatFileList(Root);
         for (int i = 0; i < FlatFileList.Count; i++)
             AllIDs.Add(((File?)FlatFileList[i])?.ID ?? (short)AllIDs.Count);
@@ -278,28 +288,28 @@ public class RARC : Archive
             return 0;
         int a = AllIDs.OrderBy(x => x).First();
         int b = AllIDs.OrderBy(x => x).Last();
-        List<int> LiterallyAllIDs = Enumerable.Range(0, b - a + 1).ToList();
-        List<short> Shorts = new();
+        List<int> LiterallyAllIDs = [.. Enumerable.Range(0, b - a + 1)];
+        List<short> Shorts = [];
         for (int i = 0; i < LiterallyAllIDs.Count; i++)
         {
             Shorts.Add((short)LiterallyAllIDs[i]);
         }
 
-        List<short> Remaining = Shorts.Except(AllIDs).ToList();
+        List<short> Remaining = [.. Shorts.Except(AllIDs)];
         if (Remaining.Count == 0)
             return (short)AllIDs.Count;
         else
             return Remaining.First();
     }
 
-    private List<byte> GetDataBytes(ArchiveDirectory Root, ref Dictionary<ArchiveFile, uint> Offsets, ref uint LocalOffset, ref uint MRAMSize, ref uint ARAMSize, ref uint DVDSize)
+    private static List<byte> GetDataBytes(ArchiveDirectory Root, ref Dictionary<ArchiveFile, uint> Offsets, ref uint LocalOffset, ref uint MRAMSize, ref uint ARAMSize, ref uint DVDSize)
     {
-        List<byte> DataBytesMRAM = new();
-        List<byte> DataBytesARAM = new();
-        List<byte> DataBytesDVD = new();
+        List<byte> DataBytesMRAM = [];
+        List<byte> DataBytesARAM = [];
+        List<byte> DataBytesDVD = [];
         //First, we must sort the files in the correct order
         //MRAM First. ARAM Second, DVD Last
-        List<ArchiveFile> MRAM = new(), ARAM = new(), DVD = new();
+        List<ArchiveFile> MRAM = [], ARAM = [], DVD = [];
         SortFilesByLoadType(Root, ref MRAM, ref ARAM, ref DVD);
 
         for (int i = 0; i < MRAM.Count; i++)
@@ -328,7 +338,7 @@ public class RARC : Archive
             }
             else
             {
-                List<byte> CurrentMRAMFile = MRAM[i].FileData?.ToList() ?? new();
+                List<byte> CurrentMRAMFile = MRAM[i].FileData?.ToList() ?? [];
                 while (CurrentMRAMFile.Count % 32 != 0)
                     CurrentMRAMFile.Add(0x00);
                 Offsets.Add(MRAM[i], LocalOffset);
@@ -340,8 +350,7 @@ public class RARC : Archive
         for (int i = 0; i < ARAM.Count; i++)
         {
             Offsets.Add(ARAM[i], LocalOffset);
-            List<byte> temp = new();
-            temp.AddRange(ARAM[i].FileData ?? throw new NullReferenceException());
+            List<byte> temp = [.. ARAM[i].FileData ?? throw new NullReferenceException()];
 
             while (temp.Count % 32 != 0)
                 temp.Add(0x00);
@@ -352,8 +361,7 @@ public class RARC : Archive
         for (int i = 0; i < DVD.Count; i++)
         {
             Offsets.Add(DVD[i], LocalOffset);
-            List<byte> temp = new();
-            temp.AddRange(DVD[i].FileData ?? throw new NullReferenceException());
+            List<byte> temp = [.. DVD[i].FileData ?? throw new NullReferenceException()];
 
             while (temp.Count % 32 != 0)
                 temp.Add(0x00);
@@ -362,13 +370,10 @@ public class RARC : Archive
         }
         DVDSize = LocalOffset - ARAMSize - MRAMSize;
 
-        List<byte> DataBytes = new();
-        DataBytes.AddRange(DataBytesMRAM);
-        DataBytes.AddRange(DataBytesARAM);
-        DataBytes.AddRange(DataBytesDVD);
+        List<byte> DataBytes = [.. DataBytesMRAM, .. DataBytesARAM, .. DataBytesDVD];
         return DataBytes;
     }
-    private void SortFilesByLoadType(ArchiveDirectory Root, ref List<ArchiveFile> MRAM, ref List<ArchiveFile> ARAM, ref List<ArchiveFile> DVD)
+    private static void SortFilesByLoadType(ArchiveDirectory Root, ref List<ArchiveFile> MRAM, ref List<ArchiveFile> ARAM, ref List<ArchiveFile> DVD)
     {
         foreach (KeyValuePair<string, object> item in Root.Items)
         {
@@ -395,38 +400,38 @@ public class RARC : Archive
             }
         }
     }
-    private List<RARCFileEntry> GetFlatFileList(ArchiveDirectory Root, Dictionary<ArchiveFile, uint> FileOffsets, ref short GlobalFileID, int CurrentFolderID, ref int NextFolderID, int BackwardsFolderID)
+    private static List<RARCFileEntry> GetFlatFileList(ArchiveDirectory Root, Dictionary<ArchiveFile, uint> FileOffsets, ref short GlobalFileID, int CurrentFolderID, ref int NextFolderID, int BackwardsFolderID, bool KeepFileIDsSynced)
     {
-        List<RARCFileEntry> FileList = new();
-        List<KeyValuePair<int, Directory>> Directories = new();
+        List<RARCFileEntry> FileList = [];
+        List<KeyValuePair<int, Directory>> Directories = [];
         foreach (KeyValuePair<string, object> item in Root.Items)
         {
             if (item.Value is File file)
             {
                 if (file.FileData is null)
                     throw new NullReferenceException();
-                FileList.Add(new RARCFileEntry() { FileID = KeepFileIDsSynced ? GlobalFileID++ : file.ID, Name = file.Name, ModularA = (int)FileOffsets[file], ModularB = file.FileData.Length, Type = (short)((ushort)file.FileSettings << 8) });
+                FileList.Add(new RARCFileEntry() { FileID = KeepFileIDsSynced ? GlobalFileID++ : file.ID, Name = file.Name, ModularA = (int)FileOffsets[file], ModularB = file.FileData.Length, Type = (byte)file.FileSettings });
             }
             else if (item.Value is Directory Currentdir)
             {
                 Directories.Add(new KeyValuePair<int, Directory>(FileList.Count, Currentdir));
                 //Dirs.Add(new RARCDirEntry() { FileCount = (ushort)(Currentdir.Items.Count + 2), FirstFileOffset = 0xFFFFFFFF, Name = Currentdir.Name, NameHash = Currentdir.NameToHash(), NameOffset = 0xFFFFFFFF, Type = Currentdir.ToTypeString() });
-                FileList.Add(new RARCFileEntry() { FileID = -1, Name = Currentdir.Name, ModularA = NextFolderID++, ModularB = 0x10, Type = 0x0200 });
+                FileList.Add(new RARCFileEntry() { FileID = -1, Name = Currentdir.Name, ModularA = NextFolderID++, ModularB = 0x10, Type = 0x02 });
                 GlobalFileID++;
             }
         }
-        FileList.Add(new RARCFileEntry() { FileID = -1, Name = ".", ModularA = CurrentFolderID, ModularB = 0x10, Type = 0x0200 });
-        FileList.Add(new RARCFileEntry() { FileID = -1, Name = "..", ModularA = BackwardsFolderID, ModularB = 0x10, Type = 0x0200 });
+        FileList.Add(new RARCFileEntry() { FileID = -1, Name = ".", ModularA = CurrentFolderID, ModularB = 0x10, Type = 0x02 });
+        FileList.Add(new RARCFileEntry() { FileID = -1, Name = "..", ModularA = BackwardsFolderID, ModularB = 0x10, Type = 0x02 });
         GlobalFileID += 2;
         for (int i = 0; i < Directories.Count; i++)
         {
-            FileList.AddRange(GetFlatFileList(Directories[i].Value, FileOffsets, ref GlobalFileID, FileList[Directories[i].Key].ModularA, ref NextFolderID, CurrentFolderID));
+            FileList.AddRange(GetFlatFileList(Directories[i].Value, FileOffsets, ref GlobalFileID, FileList[Directories[i].Key].ModularA, ref NextFolderID, CurrentFolderID, KeepFileIDsSynced));
         }
         return FileList;
     }
-    private List<ArchiveFile?> GetFlatFileList(ArchiveDirectory Root)
+    private static List<ArchiveFile?> GetFlatFileList(ArchiveDirectory Root)
     {
-        List<ArchiveFile?> FileList = new();
+        List<ArchiveFile?> FileList = [];
         foreach (KeyValuePair<string, object> item in Root.Items)
         {
             if (item.Value is ArchiveFile file)
@@ -441,10 +446,10 @@ public class RARC : Archive
         }
         return FileList;
     }
-    private List<RARCDirEntry> GetFlatDirectoryList(ArchiveDirectory Root, ref uint FirstFileOffset)
+    private static List<RARCDirEntry> GetFlatDirectoryList(ArchiveDirectory Root, ref uint FirstFileOffset)
     {
-        List<RARCDirEntry> FlatDirectoryList = new();
-        List<RARCDirEntry> TemporaryList = new();
+        List<RARCDirEntry> FlatDirectoryList = [];
+        List<RARCDirEntry> TemporaryList = [];
         FirstFileOffset += (uint)(Root.Items.Count + 2);
         foreach (KeyValuePair<string, object> item in Root.Items)
         {
@@ -459,7 +464,7 @@ public class RARC : Archive
     }
     private static List<byte> GetStringTableBytes(List<RARCFileEntry> FlatFileList, string RootName, ref Dictionary<string, uint> Offsets)
     {
-        List<byte> strings = new();
+        List<byte> strings = [];
         Encoding enc = StreamUtil.ShiftJIS;
         strings.AddRange(enc.GetBytes(RootName));
         strings.Add(0x00);
@@ -484,7 +489,6 @@ public class RARC : Archive
         }
         return strings;
     }
-
     #endregion
 
     #region Child Classes
@@ -511,7 +515,7 @@ public class RARC : Archive
             for (int i = (int)DirectoryNodeList[ID].FirstFileOffset; i < DirectoryNodeList[ID].FileCount + DirectoryNodeList[ID].FirstFileOffset; i++)
             {
                 //IsDirectory
-                if (FlatFileList[i].Type == 0x0200)
+                if (FlatFileList[i].Type == 0x02)
                 {
                     Items.Add(FlatFileList[i].Name, FlatFileList[i]);
                 }
@@ -558,17 +562,7 @@ public class RARC : Archive
 
         /// <inheritdoc/>
         public override string ToString() => $"{Name} - {Items.Count} Item(s)";
-
-        internal string ToTypeString() => Name.ToUpper().PadRight(4, ' ')[..4];
-
         /// <inheritdoc/>
-        protected override ArchiveDirectory NewDirectory() => new Directory();
-        /// <inheritdoc/>
-        protected override ArchiveDirectory NewDirectory(Archive? Owner, ArchiveDirectory? parent) => new Directory((RARC?)Owner, (Directory?)parent);
-        /// <inheritdoc/>
-        protected override ArchiveFile NewFile() => new File();
-
-
         public override bool Equals(object? obj)
         {
             if (obj is not Directory OtherDir)
@@ -587,6 +581,18 @@ public class RARC : Archive
 
             return true;
         }
+        /// <inheritdoc/>
+        public override int GetHashCode() => RuntimeHelpers.GetHashCode(this); // This is here just to shut visual studio up
+
+        internal string ToTypeString() => Name.ToUpper().PadRight(4, ' ')[..4];
+
+        /// <inheritdoc/>
+        protected override ArchiveDirectory NewDirectory() => new Directory();
+        /// <inheritdoc/>
+        protected override ArchiveDirectory NewDirectory(Archive? Owner, ArchiveDirectory? parent) => new Directory((RARC?)Owner, (Directory?)parent);
+        /// <inheritdoc/>
+        protected override ArchiveFile NewFile() => new File();
+
     }
 
     /// <summary>
@@ -620,6 +626,7 @@ public class RARC : Archive
         /// <inheritdoc/>
         public override string ToString() => $"{ID} - {Name} ({FileSettings}) [0x{FileData?.Length ?? 0:X8}]";
 
+        /// <inheritdoc/>
         public override bool Equals(object? obj)
         {
             return obj is File OtherFile &&
@@ -627,6 +634,8 @@ public class RARC : Archive
                 FileSettings.Equals(OtherFile.FileSettings) &&
                 (FileData is not null && OtherFile.FileData is not null ? (FileData.SequenceEqual(OtherFile.FileData)) : (FileData is null && OtherFile.FileData is null));
         }
+        /// <inheritdoc/>
+        public override int GetHashCode() => RuntimeHelpers.GetHashCode(this); // This is here just to shut visual studio up
     }
 
     //INTERNAL
@@ -648,7 +657,9 @@ public class RARC : Archive
         public RARCDirEntry() { }
         public RARCDirEntry(Stream RARCFile, uint StringTableOffset)
         {
-            Type = RARCFile.ReadString(4, Encoding.ASCII);
+            Span<char> cr = RARCFile.ReadString(4, Encoding.ASCII).ToCharArray();
+            StreamUtil.ApplyEndian(cr, true);
+            Type = cr.ToString();
             NameOffset = RARCFile.ReadUInt32();
             NameHash = RARCFile.ReadUInt16();
             FileCount = RARCFile.ReadUInt16();
@@ -670,7 +681,7 @@ public class RARC : Archive
     internal class RARCFileEntry
     {
         public short FileID;
-        public short Type;
+        public byte Type;
         public string Name = "    ";
         /// <summary>
         /// For files: offset to file data in file data section, for subdirectories: index of the corresponding directory node
@@ -681,9 +692,9 @@ public class RARC : Archive
         /// </summary>
         public int ModularB;
         internal short NameHash;
-        internal FileAttribute RARCFileType => (FileAttribute)((Type & 0xFF00) >> 8);
+        internal FileAttribute RARCFileType => (FileAttribute)Type;
         /// <inheritdoc/>
-        public override string ToString() => $"({FileID}) {Name}, {Type.ToString("X").PadLeft(4, '0')} ({RARCFileType}), [{ModularA:X8}][{ModularB:X8}]";
+        public override string ToString() => $"({FileID}) {Name}, {Type:X2} ({RARCFileType}), [{ModularA:X8}][{ModularB:X8}]";
     }
     #endregion
 

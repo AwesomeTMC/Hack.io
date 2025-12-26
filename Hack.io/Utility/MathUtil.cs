@@ -176,4 +176,28 @@ public static class MathUtil
     /// <param name="i"></param>
     /// <returns></returns>
     public static int GetMaxBits(int i) => 32 - GetLeadingZeros(i);
+
+    /// <summary>
+    /// Treats the value as a packed RGBA 32 bit value and gets the RGBA values individually
+    /// </summary>
+    /// <param name="value"></param>
+    /// <returns></returns>
+    [CLSCompliant(false)]
+    public static (byte R, byte G, byte B, byte A) AsRGBA(this uint value) => ((byte)((value >> 24) & 0xFF), (byte)((value >> 16) & 0xFF), (byte)((value >> 8) & 0xFF), (byte)((value >> 0) & 0xFF));
+
+    /// <summary>
+    /// Creates a packed RGBA 32 bit value from the provided RGBA
+    /// </summary>
+    /// <param name="value"></param>
+    /// <returns></returns>
+    [CLSCompliant(false)]
+    public static uint AsUInt32(this (byte R, byte G, byte B, byte A) value) => (uint)((value.R << 24) | (value.G << 16) | (value.B << 8) | (value.A << 0)); // HOW IS THIS ALLOWED
+
+    /// <summary>
+    /// directly converts raw bits into a float
+    /// </summary>
+    /// <param name="value"></param>
+    /// <returns></returns>
+    [CLSCompliant(false)]
+    public static float AsFloat(this uint value) => BitConverter.ToSingle(BitConverter.GetBytes(value), 0);
 }

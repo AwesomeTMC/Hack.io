@@ -1,10 +1,20 @@
-﻿using Hack.io.Utility;
-using System.Drawing;
-
-namespace Hack.io.GX;
+﻿namespace Hack.io.GX;
 
 public static partial class Utility
 {
+    // Follows pretty much the same logic thtat Nintendo does
+    // TODO: Finish this detection once the other encodings are made
+    public static (GXTextureFormat TextureFormat, GXPaletteFormat? PaletteFormat, GXTextureEncoder<(byte[] Source, int Width, int Height, int Count)> Func)
+        GetBestEncoder(int? PaletteColorCount, bool IsFullColor, bool HasAlpha, bool IsCutout, bool QualityOverDataSize)
+    {
+        _ = PaletteColorCount;  // temp
+        _ = IsFullColor;  // temp
+        _ = HasAlpha;  // temp
+        _ = IsCutout;  // temp
+        _ = QualityOverDataSize;  // temp
+        return (GXTextureFormat.I4, null, Encode_RGBA_to_I4);
+    }
+
     public static int CalculateTextureDataSize(GXTextureFormat Format, int Width, int Height, int Count)
     {
         int value = 0;
@@ -95,16 +105,17 @@ public static partial class Utility
     }
 
     static (byte R, byte G, byte B, byte A)
-        GetPixel(byte[] Source, int Width, int Height, int X, int Y, int Offset) => ReadPixel(Source, (((Y * Width) + X) * 4) + Offset);
+        GetPixel(byte[] Source, int Width, int X, int Y, int Offset) => ReadPixel(Source, (((Y * Width) + X) * 4) + Offset);
     static (byte R, byte G, byte B, byte A)
         ReadPixel(byte[] Source, int Position) => (Source[Position + 3], Source[Position + 2], Source[Position + 1], Source[Position]);
 }
 
+// TODO: Fix the encodings and add more
 public static partial class Utility
 {
     // Encoding
 
-    public static byte[] Encode_RGBA_to_I4((byte[] Source, int Width, int Height, int Count) SourceData)
+    public static (byte[], byte[]?) Encode_RGBA_to_I4((byte[] Source, int Width, int Height, int Count) SourceData)
     {
         byte[] Data = new byte[CalculateTextureDataSize(GXTextureFormat.I4, SourceData.Width, SourceData.Height, SourceData.Count)];
         int DestPtr = 0;
@@ -133,7 +144,7 @@ public static partial class Utility
         }
 
         //Console.WriteLine();
-        return Data;
+        return (Data, null);
 
         void Pack(int x, int y, int w, int h, int Offset) //Use Data from above
         {
@@ -153,8 +164,8 @@ public static partial class Utility
 
                 for (int col = 0; col < realCols; col++)
                 {
-                    (byte R, byte G, byte B, byte A) ActiveCol = GetPixel(SourceData.Source, w, h, x + col, y + row, Offset);
-                    byte CurrentCol = (byte)((ActiveCol.R + ActiveCol.G + ActiveCol.B) / 3);
+                    (byte R, byte G, byte B, _) = GetPixel(SourceData.Source, w, x + col, y + row, Offset);
+                    byte CurrentCol = (byte)((R + G + B) / 3);
 
                     if (col % 2 == 0)
                         Data[tilePtr] = (byte)(CurrentCol & 0x00F0);

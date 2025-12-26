@@ -1,5 +1,4 @@
-﻿using System.Text;
-using Hack.io.Interface;
+﻿using Hack.io.Interface;
 using Hack.io.Utility;
 using Hack.io.J3D;
 using static Hack.io.BPK.BPK;
@@ -13,17 +12,18 @@ namespace Hack.io.BPK;
 public class BPK : J3DAnimationBase<Animation>, ILoadSaveFile
 {
     /// <inheritdoc cref="Interface.DocGen.DOC_MAGIC"/>
-    public const string MAGIC = "J3D1bpk1";
+    public const string MAGIC = "bpk1";
     /// <inheritdoc cref="J3D.DocGen.COMMON_CHUNKMAGIC"/>
     public const string CHUNKMAGIC = "PAK1";
 
     /// <inheritdoc/>
     public void Load(Stream Strm)
     {
+        FileUtil.ExceptionOnBadMagic(Strm, J3D.Utility.MAGIC_J3D1);
         FileUtil.ExceptionOnBadMagic(Strm, MAGIC);
         uint FileSize = Strm.ReadUInt32(),
             ChunkCount = Strm.ReadUInt32();
-        Strm.ReadJ3DSubVersion();
+        Strm.ReadJ3DSubVersion(out _);
 
         //Only 1 chunk is supported
         uint ChunkStart = (uint)Strm.Position;
@@ -79,13 +79,14 @@ public class BPK : J3DAnimationBase<Animation>, ILoadSaveFile
     public void Save(Stream Strm)
     {
         long Start = Strm.Position;
-        Strm.WriteString(MAGIC, Encoding.ASCII, null);
+        Strm.WriteMagic(J3D.Utility.MAGIC_J3D1);
+        Strm.WriteMagic(MAGIC);
         Strm.WritePlaceholder(4); //FileSize
-        Strm.Write(new byte[4] { 0x00, 0x00, 0x00, 0x01 }, 0, 4); //Chunk Count
+        Strm.WriteInt32(1); // Chunk Count
         Strm.WriteJ3DSubVersion();
 
         long ChunkStart = Strm.Position;
-        Strm.WriteString(CHUNKMAGIC, Encoding.ASCII, null);
+        Strm.WriteMagic(CHUNKMAGIC);
         Strm.WritePlaceholder(4); //ChunkSize
         Strm.WriteByte((byte)Loop);
         Strm.PadTo(0x04, 0xFF); //Padding

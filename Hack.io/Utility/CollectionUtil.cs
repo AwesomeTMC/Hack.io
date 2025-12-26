@@ -241,4 +241,22 @@ public static class CollectionUtil
         if (!Source.Contains(Item))
             Source.Add(Item);
     }
+
+    /// <summary>
+    /// Adds the <paramref name="Item"/> to <paramref name="Source"/> if <see cref="IList{T}.IndexOf(T)"/> returns -1.
+    /// </summary>
+    /// <typeparam name="T"></typeparam>
+    /// <param name="Source"></param>
+    /// <param name="Item"></param>
+    /// <returns>The index of the existing element, or the index of the newly added element</returns>
+    public static int AddIfNotIndexOf<T>(this IList<T> Source, T Item)
+    {
+        int idx = Source.IndexOf(Item);
+        if (idx == -1)
+        {
+            idx = Source.Count;
+            Source.Add(Item);
+        }
+        return idx;
+    }
 }

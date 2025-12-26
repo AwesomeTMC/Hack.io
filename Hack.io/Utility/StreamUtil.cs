@@ -1,6 +1,5 @@
-﻿using System;
+﻿using System.Buffers;
 using System.Diagnostics;
-using System.IO;
 using System.Text;
 [assembly: CLSCompliant(true)]
 
@@ -21,8 +20,8 @@ public static class StreamUtil
 
     //====================================================================================================
 
-    //This is used as the Target output only.
-    private static bool UseBigEndian = false;
+    private static readonly Stack<bool> EndianStack = [];
+    private static bool UseBigEndian => EndianStack.Count > 0 && EndianStack.Peek();
 
     /// <summary>
     /// Gets the current Endian setting.
@@ -30,18 +29,22 @@ public static class StreamUtil
     /// <returns>TRUE if "Big Endian" is active.<para/>FALSE if "LIttle Endian" is active.</returns>
     public static bool GetCurrentEndian() => UseBigEndian;
     /// <summary>
-    /// Sets the current Endian
+    /// Pushes the requested endian into usage.
     /// </summary>
     /// <param name="Endian">The endian to use:<para/>TRUE = "Big Endian"<para/>FALSE = "LIttle Endian"</param>
-    public static void SetEndian(bool Endian) => UseBigEndian = Endian;
+    public static void PushEndian(bool Endian) => EndianStack.Push(Endian);
     /// <summary>
-    /// Sets the current Endian to "Big Endian"
+    /// Updates the current endian to be Big Endian
     /// </summary>
-    public static void SetEndianBig() => SetEndian(true);
+    public static void PushEndianBig() => PushEndian(true);
     /// <summary>
-    /// Sets the current Endian to "Little Endian"
+    /// Updates the current endian to be Little Endian
     /// </summary>
-    public static void SetEndianLittle() => SetEndian(false);
+    public static void PushEndianLittle() => PushEndian(false);
+    /// <summary>
+    /// Reverts to the previously used Endian
+    /// </summary>
+    public static void PopEndian() => EndianStack.Pop();
 
     /// <summary>
     /// Converts the endian bytes to the desired endian.
@@ -50,12 +53,36 @@ public static class StreamUtil
     /// <param name="Invert">If TRUE, the data will come out in the opposite endian</param>
     public static void ApplyEndian<T>(Span<T> data, bool Invert = false)
     {
-        //If the system endian matches the file's endian, we can do nothing!
-        if (!UseBigEndian == BitConverter.IsLittleEndian)
-            return;
-        if (!Invert)
-            data.Reverse();
+        bool e = BitConverter.IsLittleEndian;
+        if (Invert)
+            e = !e;
+        if (e)
+        {
+            if (UseBigEndian)
+                data.Reverse();
+        }
+        else
+        {
+            if (!UseBigEndian)
+                data.Reverse();
+        }
     }
+
+    //====================================================================================================
+
+    private static readonly Stack<Encoding> EncodingStack = [];
+    private static Encoding? CurrentEncoding => EncodingStack.Count > 0 ? EncodingStack.Peek() : null;
+    
+    /// <summary>
+    /// Pushes an encoding onto the Encoding Override stack.<para/>
+    /// The Encoding Override stack allows for overriding what a string type is read as
+    /// </summary>
+    /// <param name="enc">The encoding to push onto the stack</param>
+    public static void PushEncoding(Encoding enc) => EncodingStack.Push(enc);
+    /// <summary>
+    /// Reverts to the previously used Encoding (or the default encoding)
+    /// </summary>
+    public static void PopEncoding() => EncodingStack.Pop();
 
     //====================================================================================================
 
@@ -516,14 +543,14 @@ public static class StreamUtil
     /// <param name="Strm">The stream to read from</param>
     /// <returns>The resulting string</returns>
     /// <exception cref="EndOfStreamException"></exception>
-    public static string ReadStringJIS(this Stream Strm) => Strm.ReadString(ShiftJIS);
+    public static string ReadStringJIS(this Stream Strm) => Strm.ReadString(CurrentEncoding ?? ShiftJIS);
     /// <summary>
     /// Reads an "ASCII" string from the Stream that's NULL terminated.
     /// </summary>
     /// <param name="Strm">The stream to read from</param>
     /// <returns>The resulting string</returns>
     /// <exception cref="EndOfStreamException"></exception>
-    public static string ReadStringASCII(this Stream Strm) => Strm.ReadString(Encoding.ASCII);
+    public static string ReadStringASCII(this Stream Strm) => Strm.ReadString(CurrentEncoding ?? Encoding.ASCII);
 
     /// <summary>
     /// Checks the stream for a given Magic identifier.<para/>Advances the Stream's Position forwards by Magic.Length
@@ -540,8 +567,6 @@ public static class StreamUtil
         ApplyEndian(read, true);
         return read.SequenceEqual(Magic);
     }
-    /// <inheritdoc cref="IsMagicMatch(Stream, ReadOnlySpan{byte})"/>
-    public static bool IsMagicMatch(this Stream Strm, ReadOnlySpan<char> Magic) => IsMagicMatch(Strm, Magic, Encoding.ASCII);
     /// <summary>
     /// Checks the stream for a given Magic identifier.<para/>Advances the Stream's Position forwards by Magic.Length
     /// </summary>
@@ -549,14 +574,30 @@ public static class StreamUtil
     /// <param name="Magic">The magic to check</param>
     /// <param name="Enc">The encoding that should be used when reading the file</param>
     /// <returns>TRUE if the next bytes match the magic, FALSE otherwise.</returns>
-    public static bool IsMagicMatch(this Stream Strm, ReadOnlySpan<char> Magic, Encoding Enc)
+    public static bool IsMagicMatch(this Stream Strm, ReadOnlySpan<char> Magic, Encoding? Enc = null)
     {
+        Enc ??= Encoding.ASCII;
+
         Debug.Assert(Magic.Length is > 0 and < 16);
 
         string str = Strm.ReadString(Magic.Length, Enc);
         Span<char> to = new(str.ToCharArray());
         ApplyEndian(to, true);
         return to.SequenceEqual(Magic);
+    }
+    /// <summary>
+    /// Attempts to read the following bytes as a MAGIC
+    /// </summary>
+    /// <param name="Strm">The stream to read</param>
+    /// <param name="Length">The length of the magic to read (generally 4)</param>
+    /// <param name="Enc">The encoding that should be used when reading the file</param>
+    /// <returns>the next <paramref name="Length"/> bytes as a string</returns>
+    public static string ReadMagic(this Stream Strm, int Length, Encoding? Enc = null)
+    {
+        Enc ??= CurrentEncoding ?? Encoding.ASCII;
+        Span<char> cr = Strm.ReadString(Length, Enc).ToCharArray();
+        ApplyEndian(cr, true);
+        return cr.ToString();
     }
 
     //====================================================================================================
@@ -809,6 +850,34 @@ public static class StreamUtil
     /// <param name="String">the string to write</param>
     /// <param name="Terminator">The byte to use for the Terminator. Set to NULL to dsiable termination (for MAGICs and whatnot)</param>
     public static void WriteStringJIS(this Stream Strm, string String, byte? Terminator = 0x00) => Strm.WriteString(String, ShiftJIS, Terminator);
+
+    /// <summary>
+    /// Writes a byte[] into the file as Magic
+    /// </summary>
+    /// <param name="Strm"></param>
+    /// <param name="Magic"></param>
+    public static void WriteMagic(this Stream Strm, byte[] Magic)
+    {
+        Span<byte> b = new(Magic);
+        ApplyEndian(b, true);
+        Strm.Write(b);
+    }
+
+    /// <summary>
+    /// Writes a string into the file as Magic
+    /// </summary>
+    /// <param name="Strm"></param>
+    /// <param name="Magic"></param>
+    /// <param name="Enc"></param>
+    public static void WriteMagic(this Stream Strm, string Magic, Encoding? Enc = null)
+    {
+        Enc ??= Encoding.ASCII;
+
+        byte[] Write = Enc.GetBytes(Magic);
+        Span<byte> b = new(Write);
+        ApplyEndian(b, true);
+        Strm.Write(b);
+    }
 
     //====================================================================================================
 

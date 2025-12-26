@@ -63,7 +63,7 @@ public class GXTexture
             Strm.Write(mPaletteData);
         }
     }
-
+    /// <inheritdoc/>
     public override bool Equals(object? obj)
         => obj is GXTexture texture &&
             mTextureFormat == texture.mTextureFormat &&
@@ -81,8 +81,8 @@ public class GXTexture
             mTextureCount == texture.mTextureCount &&
             mPaletteCount == texture.mPaletteCount &&
         mTextureData.SequenceEqual(texture.mTextureData) &&
-        (mPaletteData?.SequenceEqual(texture.mPaletteData) ?? texture.mPaletteData is null);
-
+        ((mPaletteData is null && texture.mPaletteData is null) || (mPaletteData is not null && texture.mPaletteData is not null && mPaletteData.SequenceEqual(texture.mPaletteData)));
+    /// <inheritdoc/>
     public override int GetHashCode()
     {
         HashCode hash = new();
@@ -103,6 +103,62 @@ public class GXTexture
         hash.Add(mTextureData);
         hash.Add(mPaletteData);
         return hash.ToHashCode();
+    }
+
+    /// <summary>
+    /// Copies the texture data (and it's settings) onto the <paramref name="target"/>, fully overwriting it.
+    /// </summary>
+    /// <param name="target">The destination to overwrite with a clone of this texture's data.</param>
+    public virtual void CopyTo(GXTexture target)
+    {
+        target.mTextureFormat = mTextureFormat;
+        target.mPaletteFormat = mPaletteFormat;
+        target.mWrapS = mWrapS;
+        target.mWrapT = mWrapT;
+        target.mMagnificationFilter = mMagnificationFilter;
+        target.mMinificationFilter = mMinificationFilter;
+        target.mMinLOD = mMinLOD;
+        target.mMaxLOD = mMaxLOD;
+        target.mLODBias = mLODBias;
+        target.mEnableEdgeLOD = mEnableEdgeLOD;
+        target.mWidth = mWidth;
+        target.mHeight = mHeight;
+        target.mTextureCount = mTextureCount;
+        target.mPaletteCount = mPaletteCount;
+        mTextureData.CopyTo(target.mTextureData.AsSpan());
+        if (mPaletteData is not null)
+        {
+            target.mPaletteData = new byte[mPaletteData.Length];
+            mPaletteData.CopyTo(target.mPaletteData.AsSpan());
+        }
+        else
+            target.mPaletteData = null;
+    }
+
+    protected static void EncodeTextureData<Img, EncT>(Img Destination, GXTextureEncoder<EncT> Encoder, EncT Data, GXTextureFormat TextureFormat, GXPaletteFormat? PaletteFormat, int Width, int Height, int Levels, int? PaletteCount)
+        where Img : GXTexture
+    {
+        (byte[] TexData, byte[]? PalData) = Encoder(Data);
+        Destination.mTextureFormat = TextureFormat;
+        Destination.mPaletteFormat = PaletteFormat ?? GXPaletteFormat.IA8;
+        Destination.mTextureData = TexData;
+        Destination.mPaletteData = PalData;
+        Destination.mWidth = Width;
+        Destination.mHeight = Height;
+        Destination.mTextureCount = Levels;
+        Destination.mPaletteCount = PaletteCount ?? 0;
+    }
+    protected static void SetFilterAndLoD<Img>(Img Destination, GXWrapMode WrapS, GXWrapMode WrapT, GXFilterMode MagnificationFilter, GXFilterMode MinificationFilter, float MinLOD, float MaxLOD, float LODBias, bool EnableEdgeLOD)
+        where Img : GXTexture
+    {
+        Destination.mWrapS = WrapS;
+        Destination.mWrapT = WrapT;
+        Destination.mMagnificationFilter = MagnificationFilter;
+        Destination.mMinificationFilter = MinificationFilter;
+        Destination.mMinLOD = MinLOD;
+        Destination.mMaxLOD = MaxLOD;
+        Destination.mLODBias = LODBias;
+        Destination.mEnableEdgeLOD = EnableEdgeLOD;
     }
 }
 
