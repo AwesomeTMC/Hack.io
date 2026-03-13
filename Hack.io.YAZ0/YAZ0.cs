@@ -1,4 +1,5 @@
-﻿using Hack.io.Interface;
+﻿using Hack.io.Class;
+using Hack.io.Interface;
 using Hack.io.Utility;
 using System.Collections;
 using System.ComponentModel;
@@ -22,9 +23,8 @@ public static class YAZ0
     /// <returns>TRUE if the stream is Yaz0 encoded</returns>
     public static bool Check(Stream Data)
     {
-        StreamUtil.PushEndianBig(); // YAZ0 is always Big Endian
-        bool v = Data.IsMagicMatch(MAGIC);
-        StreamUtil.PopEndian();
+        var wrappedStream = new UtilityStream(Data, StreamEndian.Big); // YAZ0 is always Big Endian
+        bool v = wrappedStream.IsMagicMatch(MAGIC);
         return v;
     }
 
@@ -72,12 +72,11 @@ public static class YAZ0
 
     private static byte[] Decode(byte[] Data)
     {
-        using MemoryStream Strm = new(Data);
+        using UtilityStream Strm = new(new MemoryStream(Data), StreamEndian.Big);
         if (!Check(Strm))
             return Data; //NO MORE EXCEPTIONS!!!
 
 
-        StreamUtil.PushEndianBig(); // YAZ0 is always Big Endian
         uint DecompressedSize = Strm.ReadUInt32(),
             CompressedDataOffset = Strm.ReadUInt32(),
             UncompressedDataOffset = Strm.ReadUInt32();
@@ -103,7 +102,6 @@ public static class YAZ0
                 }
             }
         }
-        StreamUtil.PopEndian();
         return [.. Decoding];
     }
 
@@ -121,14 +119,12 @@ public static class YAZ0
     private static byte[] Encode_Strong(byte[] Src, BackgroundWorker? BGW = null, uint Strength = 0x1000)
     {
         ExceptionOnSuperStrength(Strength);
-
-        StreamUtil.PushEndianBig(); // YAZ0 is always Big Endian
         uint ByteCountA = 0;
         uint MatchPos = 0;
         int PrevFlag = 0;
         List<byte> OutputFile = [0x59, 0x61, 0x7A, 0x30];
         Span<byte> len = BitConverter.GetBytes(Src.Length);
-        StreamUtil.ApplyEndian(len);
+        StreamUtil.ApplyEndian(len, StreamEndian.Big);
         OutputFile.AddRange(len.ToArray());
         OutputFile.AddRange(new byte[8]);
         Ret r = new(0, 0);
@@ -143,7 +139,6 @@ public static class YAZ0
         {
             if (BGW?.CancellationPending ?? false)
             {
-                StreamUtil.PopEndian();
                 return [];
             }
 
@@ -227,7 +222,6 @@ public static class YAZ0
             r.DstPos = 0;
         }
 
-        StreamUtil.PopEndian();
         return [.. OutputFile];
 
         uint EncodeAdvanced(byte[] src, int size, int pos, ref uint pMatchPos, int Strength)
@@ -294,7 +288,6 @@ public static class YAZ0
     {
         ExceptionOnSuperStrength(Strength);
 
-        StreamUtil.PushEndianBig();
         int lastpercent = -1;
         byte* dataptr = (byte*)Marshal.UnsafeAddrOfPinnedArrayElement(Src, 0);
 
@@ -317,7 +310,6 @@ public static class YAZ0
         {
             if (BGW?.CancellationPending ?? false)
             {
-                StreamUtil.PopEndian();
                 return [];
             }
 
@@ -408,7 +400,6 @@ public static class YAZ0
             dstoffs++;
         byte[] realresult = new byte[dstoffs];
         Array.Copy(result, realresult, dstoffs);
-        StreamUtil.PopEndian();
         return realresult;
     }
     #endregion
@@ -418,8 +409,6 @@ public static class YAZ0
     private static byte[] Encode_Official(byte[] Src, BackgroundWorker? BGW = null, uint MaxSeekBack = 0x1000)
     {
         ExceptionOnSuperStrength(MaxSeekBack);
-
-        StreamUtil.PushEndianBig();
 
         const int MIN_MATCH = 2;
         const int MAX_COPY_SIZE = 0xFF + 0x12;
@@ -433,7 +422,7 @@ public static class YAZ0
         // YAZ0 header
         List<byte> enc = new(SourceSpan.Length + 0x20) { 0x59, 0x61, 0x7A, 0x30 };
         Span<byte> len = BitConverter.GetBytes(SourceSpan.Length);
-        StreamUtil.ApplyEndian(len);
+        StreamUtil.ApplyEndian(len, StreamEndian.Big);
         enc.AddRange(len);
         enc.AddRange(stackalloc byte[8]);
 
@@ -451,7 +440,6 @@ public static class YAZ0
             {
                 if (BGW?.CancellationPending ?? false)
                 {
-                    StreamUtil.PopEndian();
                     return [];
                 }
 
@@ -603,7 +591,6 @@ public static class YAZ0
         }
 
     end:
-        StreamUtil.PopEndian();
         return [.. enc];
     }
     #endregion

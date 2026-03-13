@@ -78,9 +78,9 @@ public abstract class Archive : ILoadSaveFile
     #region Functions
     //PUBLIC
     /// <inheritdoc/>
-    public void Load(Stream Strm) => Read(Strm);
+    public void Load(UtilityStream Strm) => Read(Strm);
     /// <inheritdoc/>
-    public void Save(Stream Strm) => Write(Strm);
+    public void Save(UtilityStream Strm) => Write(Strm);
 
     /// <summary>
     /// Checks to see if an Item Exists based on a Path
@@ -203,7 +203,7 @@ public abstract class Archive : ILoadSaveFile
 
         if (target is not ArchiveFile af)
             throw new InvalidOperationException("Cannot use a directory.");
-        Destination.Load((MemoryStream)af);
+        Destination.Load(((MemoryStream)af).Wrap());
     }
 
     /// <summary>
@@ -212,8 +212,10 @@ public abstract class Archive : ILoadSaveFile
     /// <typeparam name="T"></typeparam>
     /// <param name="ArchivePath"></param>
     /// <param name="Source"></param>
+    /// <param name="endian"></param>
+    /// <param name="encoding"></param>
     /// <exception cref="InvalidOperationException"></exception>
-    public void WriteFile<T>(string ArchivePath, ref T Source)
+    public void WriteFile<T>(string ArchivePath, ref T Source, StreamEndian endian = StreamEndian.Big, Encoding? encoding = null)
         where T : ILoadSaveFile
     {
         string[] pathsplit = ArchivePath.Split('/');
@@ -222,7 +224,7 @@ public abstract class Archive : ILoadSaveFile
         if (target is not ArchiveFile af)
             throw new InvalidOperationException("Cannot use a directory.");
 
-        MemoryStream Data = new();
+        UtilityStream Data = new(new MemoryStream(), endian, encoding);
         Source.Save(Data);
         af.Load(Data);
         this[ArchivePath] = af;
@@ -235,17 +237,27 @@ public abstract class Archive : ILoadSaveFile
         return $"{Name} - {Count} File{(Count > 1 ? "s" : "")} total";
     }
 
+    [Obsolete("Stream will be auto-wrapped into a UtilityStream using the default endian and encoding. To hide this warning, explicitly wrap your stream via yourStream.Wrap();")]
+    protected void Read(Stream ArchiveFile)
+    {
+        Read(ArchiveFile.Wrap());
+    }
     //PROTECTED
     /// <summary>
     /// The Binary I/O function for reading the file
     /// </summary>
     /// <param name="ArchiveFile"></param>
-    protected abstract void Read(Stream ArchiveFile);
+    protected abstract void Read(UtilityStream ArchiveFile);
+    [Obsolete("Stream will be auto-wrapped into a UtilityStream using the default endian and encoding. To hide this warning, explicitly wrap your stream via yourStream.Wrap();")]
+    protected void Write(Stream ArchiveFile)
+    {
+        Write(ArchiveFile.Wrap());
+    }
     /// <summary>
     /// The Binary I/O function for writing the file
     /// </summary>
     /// <param name="ArchiveFile"></param>
-    protected abstract void Write(Stream ArchiveFile);
+    protected abstract void Write(UtilityStream ArchiveFile);
 
     /// <summary>
     /// Executed when you use ArchiveBase["FilePath"] to set a file
@@ -769,6 +781,11 @@ public class ArchiveFile : ILoadSaveFile
             throw new InvalidOperationException(FILEDATA_IS_NULL);
         Strm.Write(FileData);
     }
+    /// <inheritdoc/>
+    public void Load(UtilityStream Strm) => Load((Stream)Strm);
+    /// <inheritdoc/>
+    public void Save(UtilityStream Strm) => Save((Stream)Strm);
+
 
     /// <summary>
     /// Copies the data from this <see cref="ArchiveFile"/> to another <see cref="ArchiveFile"/>

@@ -1,4 +1,5 @@
-﻿using System.Diagnostics;
+﻿using Hack.io.Class;
+using System.Diagnostics;
 using System.Text;
 
 namespace Hack.io.Utility;
@@ -117,13 +118,31 @@ public static class FileUtil
     /// <param name="Strm">The stream to check</param>
     /// <param name="Magic">The magic to check for</param>
     /// <exception cref="BadImageFormatException"></exception>
+    [Obsolete("Stream will be auto-wrapped into a UtilityStream using the default endian and encoding. To hide this warning, explicitly wrap your stream via yourStream.Wrap();")]
     public static void ExceptionOnBadMagic(Stream Strm, ReadOnlySpan<byte> Magic)
+    {
+        ExceptionOnBadMagic(Strm.Wrap(), Magic);
+    }
+
+    /// <summary>
+    /// throws an exception if the current stream position does not contain the requested magic
+    /// </summary>
+    /// <param name="Strm">The stream to check</param>
+    /// <param name="Magic">The magic to check for</param>
+    /// <exception cref="BadImageFormatException"></exception>
+    public static void ExceptionOnBadMagic(UtilityStream Strm, ReadOnlySpan<byte> Magic)
     {
         if (!Strm.IsMagicMatch(Magic))
             throw new BadImageFormatException($"Invalid Magic. Expected \"{Magic.ToString()}\"");
     }
-    /// <inheritdoc cref="ExceptionOnBadMagic(Stream, ReadOnlySpan{byte})" />
+    [Obsolete("Stream will be auto-wrapped into a UtilityStream using the default endian and encoding. To hide this warning, explicitly wrap your stream via yourStream.Wrap();")]
+    /// <inheritdoc cref="ExceptionOnBadMagic(UtilityStream, ReadOnlySpan{byte})" />
     public static void ExceptionOnBadMagic(Stream Strm, ReadOnlySpan<char> Magic)
+    {
+        ExceptionOnBadMagic(Strm.Wrap(), Magic);
+    }
+    /// <inheritdoc cref="ExceptionOnBadMagic(UtilityStream, ReadOnlySpan{byte})" />
+    public static void ExceptionOnBadMagic(UtilityStream Strm, ReadOnlySpan<char> Magic)
     {
         if (!Strm.IsMagicMatch(Magic))
             throw new BadImageFormatException($"Invalid Magic. Expected \"{Magic}\"");
@@ -135,24 +154,34 @@ public static class FileUtil
     /// <param name="Magic">The magic to check for</param>
     /// <param name="Enc">The encoding to read the stream with</param>
     /// <exception cref="BadImageFormatException"></exception>
-    public static void ExceptionOnBadMagic(Stream Strm, ReadOnlySpan<char> Magic, Encoding Enc)
+    public static void ExceptionOnBadMagic(UtilityStream Strm, ReadOnlySpan<char> Magic, Encoding Enc)
     {
         if (!Strm.IsMagicMatch(Magic, Enc))
             throw new BadImageFormatException($"Invalid Magic. Expected \"{Magic}\"");
     }
 
+    [Obsolete("Stream will be auto-wrapped into a UtilityStream using the default endian and encoding. To hide this warning, explicitly wrap your stream via yourStream.Wrap();")]
     /// <summary>
     /// throws an exception if the current Endian mode of Hack.io does not match the one present in the stream's BOM
     /// </summary>
-    /// <param name="Strm"></param>
-    public static void ExceptionOnMisMatchedBOM(Stream Strm)
+    /// <param name="inStrm"></param>
+    public static void ExceptionOnMisMatchedBOM(Stream inStrm)
     {
+        ExceptionOnMisMatchedBOM(inStrm.Wrap());
+    }
+    /// <summary>
+    /// throws an exception if the current Endian mode of Hack.io does not match the one present in the stream's BOM
+    /// </summary>
+    /// <param name="inStrm"></param>
+    public static void ExceptionOnMisMatchedBOM(UtilityStream inStrm)
+    {
+        var Strm = inStrm.Wrap();
         byte[] Raw = new byte[2];
         Strm.Read(Raw);
         ushort BOM = BitConverter.ToUInt16(Raw);
-        if (StreamUtil.GetCurrentEndian() && BOM != 0xFFFE)
+        if (Strm.Endian == StreamEndian.Little && BOM != 0xFFFE)
             throw new InvalidOperationException("File BOM does not match Hack.io's active Endian");
-        else if (!StreamUtil.GetCurrentEndian() && BOM != 0xFEFF)
+        else if (Strm.Endian == StreamEndian.Big && BOM != 0xFEFF)
             throw new InvalidOperationException("File BOM does not match Hack.io's active Endian");
     }
 

@@ -1,7 +1,8 @@
-﻿using System.Data;
-using System.Text;
+﻿using Hack.io.Class;
 using Hack.io.Interface;
 using Hack.io.Utility;
+using System.Data;
+using System.Text;
 
 namespace Hack.io.BCSV;
 
@@ -266,7 +267,7 @@ public class BCSV : ILoadSaveFile
     #endregion
 
     /// <inheritdoc/>
-    public virtual void Load(Stream Strm)
+    public virtual void Load(UtilityStream Strm)
     {
         Fields.Clear();
         Entries.Clear();
@@ -338,7 +339,7 @@ public class BCSV : ILoadSaveFile
     /// <exception cref="InternalBufferOverflowException"></exception>
     /// <exception cref="InvalidCastException"></exception>
     /// <exception cref="ArgumentException"></exception>
-    public virtual void Save(Stream Strm)
+    public virtual void Save(UtilityStream Strm)
     {
         BCSV c = this;
         OnSaveFieldCalculator(ref c);
@@ -393,7 +394,7 @@ public class BCSV : ILoadSaveFile
                         {
                             if (obj is not int i)
                                 throw new ArgumentException(string.Format(JMapException.INCORRECT_DATATYPE_ERROR, obj.GetType().Name, typeof(int).Name));
-                            int cur = (int)(Strm.Peek(StreamUtil.ReadInt32) & ~field.Bitmask);
+                            int cur = (int)(Strm.Peek(Strm.ReadInt32) & ~field.Bitmask);
                             int tar = (int)((i << field.ShiftAmount) & field.Bitmask);
                             Strm.WriteInt32(tar | cur);
                         }
@@ -419,7 +420,7 @@ public class BCSV : ILoadSaveFile
                         {
                             if (obj is not uint ui)
                                 throw new ArgumentException(string.Format(JMapException.INCORRECT_DATATYPE_ERROR, obj.GetType().Name, typeof(uint).Name));
-                            uint cur = (uint)(Strm.Peek(StreamUtil.ReadInt32) & ~field.Bitmask);
+                            uint cur = (uint)(Strm.Peek(Strm.ReadInt32) & ~field.Bitmask);
                             uint tar = (ui << field.ShiftAmount) & field.Bitmask;
                             Strm.WriteUInt32(tar | cur);
                         }
@@ -428,7 +429,7 @@ public class BCSV : ILoadSaveFile
                         {
                             if (obj is not short s)
                                 throw new ArgumentException(string.Format(JMapException.INCORRECT_DATATYPE_ERROR, obj.GetType().Name, typeof(short).Name));
-                            short cur = (short)(Strm.Peek(StreamUtil.ReadInt16) & ~field.Bitmask);
+                            short cur = (short)(Strm.Peek(Strm.ReadInt16) & ~field.Bitmask);
                             short tar = (short)((s << field.ShiftAmount) & field.Bitmask);
                             Strm.WriteInt16((short)(tar | cur));
                         }

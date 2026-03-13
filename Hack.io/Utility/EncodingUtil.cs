@@ -13,4 +13,11 @@ public static class EncodingUtil
     /// <param name="enc"></param>
     /// <returns></returns>
     public static int GetStride(this Encoding enc) => enc.GetMaxByteCount(0);
+    //Registers the code page provider so we can use SHIFT-JIS
+    static EncodingUtil() => Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+
+    /// <summary>
+    /// Shortcut to Encoding.GetEncoding("Shift-JIS")
+    /// </summary>
+    public static Encoding ShiftJIS => Encoding.GetEncoding("Shift-JIS");
 }

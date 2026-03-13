@@ -64,9 +64,8 @@ public class RARC : Archive
         if (!KeepFileIDsSynced && value is File file && file.ID == -1 && !ItemExists(Path))
             file.ID = GetNextFreeID();
     }
-
     /// <inheritdoc/>
-    protected override void Read(Stream Strm)
+    protected override void Read(UtilityStream Strm)
     {
         #region Header
         FileUtil.ExceptionOnBadMagic(Strm, MAGIC);
@@ -165,7 +164,7 @@ public class RARC : Archive
         #endregion
     }
     /// <inheritdoc/>
-    protected override void Write(Stream Strm)
+    protected override void Write(UtilityStream Strm)
     {
         if (Root is null)
             throw new NullReferenceException(NULL_ROOT_EXCEPTION);
@@ -546,7 +545,7 @@ public class RARC : Archive
                 {
                     Name = new FileInfo(Found[i]).Name
                 };
-                FileUtil.LoadFile(Found[i], temp.Load, FileAccess.Read);
+                FileUtil.LoadFile(Found[i], new Action<Stream>(x => { temp.Load(x.Wrap()); }), FileAccess.Read);
                 Items[temp.Name] = temp;
             }
 
@@ -655,10 +654,15 @@ public class RARC : Archive
         public uint FirstFileOffset { get; set; }
 
         public RARCDirEntry() { }
-        public RARCDirEntry(Stream RARCFile, uint StringTableOffset)
+        [Obsolete("Stream will be auto-wrapped into a UtilityStream using the default endian and encoding. To hide this warning, explicitly wrap your stream via yourStream.Wrap();")]
+        public RARCDirEntry(Stream RARCFile, uint StringTableOffset) : this(RARCFile.Wrap(), StringTableOffset)
+        {
+
+        }
+        public RARCDirEntry(UtilityStream RARCFile, uint StringTableOffset)
         {
             Span<char> cr = RARCFile.ReadString(4, Encoding.ASCII).ToCharArray();
-            StreamUtil.ApplyEndian(cr, true);
+            RARCFile.ApplyEndian(cr, true);
             Type = cr.ToString();
             NameOffset = RARCFile.ReadUInt32();
             NameHash = RARCFile.ReadUInt16();
