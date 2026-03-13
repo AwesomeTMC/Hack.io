@@ -984,7 +984,7 @@ public static class StreamUtil
     //====================================================================================================
 
     /// <summary>
-    /// Reads out all the bytes from a stream.
+    /// Reads out all the bytes from a stream. Does not care where the input stream's position is.
     /// </summary>
     /// <param name="Strm">The stream to read out.<para/>If this is a MemoryStream, <see cref="MemoryStream.ToArray"/> is called instead.</param>
     /// <returns>A byte[] of the streams contents.</returns>
@@ -993,8 +993,13 @@ public static class StreamUtil
         if (Strm is MemoryStream Mstrm)
             return Mstrm.ToArray();
 
+        if (!Strm.CanSeek)
+            throw new NotSupportedException("Stream must be able to seek!");
         using MemoryStream memoryStream = new();
+        var prevPos = Strm.Position;
+        Strm.Position = 0;
         Strm.CopyTo(memoryStream);
+        Strm.Position = prevPos;
         return memoryStream.ToArray();
     }
 
